@@ -1,0 +1,17 @@
+# Xcode / build
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+
+# Projeto gerado pelo XcodeGen — recriado com `xcodegen generate`
+iRemoteAiPeek.xcodeproj/
+
+# Artefatos de distribuição (scripts/build_app.sh + create_dmg.sh)
+dist/
+
+# macOS
+.DS_Store
+
+# Worktrees do Claude Code
+.claude/worktrees/

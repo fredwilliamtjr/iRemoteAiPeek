@@ -1,0 +1,41 @@
+name: iRemoteAiPeek
+options:
+  bundleIdPrefix: com.smartfull
+  deploymentTarget:
+    macOS: "13.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+settings:
+  base:
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.0"
+    DEVELOPMENT_LANGUAGE: pt-BR
+
+targets:
+  iRemoteAiPeek:
+    type: application
+    platform: macOS
+    sources:
+      - path: App
+        excludes:
+          - "Info.plist"
+      - path: Core
+      - path: Utilities
+      - path: Resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.smartfull.iremoteaipeek
+        PRODUCT_NAME: iRemoteAiPeek
+        INFOPLIST_FILE: App/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        MACOSX_DEPLOYMENT_TARGET: "13.0"
+        # Dev: assinatura ad-hoc, sem hardened runtime e sem sandbox.
+        # iRemoteAiPeek roda o claude (e o shell de login) via Process num
+        # pseudo-terminal — incompatível com o App Sandbox.
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_HARDENED_RUNTIME: NO
+        ENABLE_APP_SANDBOX: NO
+        COMBINE_HIDPI_IMAGES: YES
