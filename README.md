@@ -33,6 +33,7 @@ iRemoteAiPeek é um app de barra de menus que roda o `claude remote-control` num
 ## 🎯 Features
 
 - 📁 **Pasta configurável** — *Escolher pasta…*; trocar a pasta com o serviço rodando reinicia nela
+- ⚙️ **Opções do `claude rc`** — submenu *Opções do claude rc*: Claude in Chrome (`--chrome`), modo de permissão inicial (`--permission-mode`) e criação das sessões (`--spawn`). Ficam salvas e valem no próximo início; com o serviço rodando, aparece *Reiniciar para aplicar as opções*
 - ▶️ **Inicia sozinho** — ao abrir o app, o `claude rc` sobe na pasta configurada
 - 🚀 **Iniciar com o macOS** — opcional, pelo menu da barra
 - 🟢 **Status no ícone** — ativo, iniciando/reiniciando, parado ou atenção, e quantas sessões estão abertas
@@ -137,7 +138,8 @@ Para refazer o ícone, apague `Resources/AppIcon.icns` e rode o build de novo.
 - [x] Status no ícone, link da sessão e reinício automático
 - [x] Descoberta de outras instâncias do `claude rc` (pasta, PID e sessões)
 - [ ] Várias pastas ao mesmo tempo
-- [ ] Opções do `claude rc` pelo menu (nome da sessão, `--spawn worktree`, modo de permissão)
+- [x] Opções do `claude rc` pelo menu (`--chrome`, modo de permissão, `--spawn`)
+- [ ] Nome da sessão (`--name` / prefixo) pelo menu
 - [ ] Notificação quando o serviço cair
 - [ ] Developer ID + notarização (distribuir sem aviso do Gatekeeper)
 

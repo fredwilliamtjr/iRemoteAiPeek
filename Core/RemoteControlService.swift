@@ -60,6 +60,9 @@ final class RemoteControlService: ObservableObject {
     @Published private(set) var lastLine: String?
     /// Todas as instâncias do `claude rc` neste Mac, inclusive a do app.
     @Published private(set) var instances: [RCInstance] = []
+    /// Parâmetros com que o `claude rc` do app está rodando — se forem
+    /// diferentes das opções atuais, falta reiniciar para valerem.
+    @Published private(set) var runningArguments: [String]?
 
     private let settings = AppSettings.shared
     private let log = RCLog.shared
@@ -132,13 +135,18 @@ final class RemoteControlService: ObservableObject {
         tail = ""
         log.resetDedup()
 
+        let rcArgs = settings.rcArguments
+        // Os parâmetros vêm de opções fixas (RCOptions), sem texto livre — dá
+        // para juntar na linha de comando sem escapar.
+        let command = (["exec", "claude", "remote-control"] + rcArgs).joined(separator: " ")
+
         do {
             let pty = try PseudoTerminal(columns: 200, rows: 50)
             let proc = Process()
             proc.executableURL = URL(fileURLWithPath: Self.loginShell)
             // `exec`: o shell vira o próprio claude, então o PID que o app
             // acompanha (e para) é o do claude rc.
-            proc.arguments = ["-l", "-c", "exec claude remote-control"]
+            proc.arguments = ["-l", "-c", command]
             proc.currentDirectoryURL = folder
             proc.environment = Self.environment()
             let tty = pty.slaveHandle
@@ -157,10 +165,11 @@ final class RemoteControlService: ObservableObject {
             self.process = proc
             startedAt = Date()
             isRunning = true
+            runningArguments = rcArgs
             status = .starting
             attachReader(to: pty.master)
             refreshInstances()
-            log.event("iniciando claude remote-control em \(folder.path) (pid \(proc.processIdentifier))")
+            log.event("iniciando \(command.dropFirst("exec ".count)) em \(folder.path) (pid \(proc.processIdentifier))")
         } catch {
             status = .failed(error.localizedDescription)
             log.event("falha ao iniciar: \(error.localizedDescription)")
@@ -295,6 +304,7 @@ final class RemoteControlService: ObservableObject {
         process = nil
         pty = nil   // o mestre é fechado pelo leitor ao receber o fim
         isRunning = false
+        runningArguments = nil
         sessionURL = nil
 
         let ranFor = Date().timeIntervalSince(startedAt)

@@ -52,6 +52,11 @@ struct MenuBarContent: View {
 
         Divider()
 
+        optionsMenu
+        if optionsPending {
+            Button("Reiniciar para aplicar as opções") { rc.restart() }
+        }
+
         Button("Escolher pasta…") { chooseFolder() }
         Button("Abrir pasta no Finder") {
             if let folder = settings.folder { NSWorkspace.shared.open(folder) }
@@ -99,6 +104,28 @@ struct MenuBarContent: View {
                 }
             }
         }
+    }
+
+    /// Parâmetros do `claude rc`. Valem a partir do próximo início.
+    private var optionsMenu: some View {
+        Menu("Opções do claude rc") {
+            Toggle("Claude in Chrome (--chrome)", isOn: $settings.chrome)
+            Picker("Modo de permissão (--permission-mode)", selection: $settings.permissionMode) {
+                ForEach(RCPermissionMode.allCases) { Text($0.label).tag($0) }
+            }
+            Picker("Sessões (--spawn)", selection: $settings.spawnMode) {
+                ForEach(RCSpawnMode.allCases) { Text($0.label).tag($0) }
+            }
+            Divider()
+            Text("claude remote-control " + settings.rcArguments.joined(separator: " "))
+            Text("Vale ao iniciar ou reiniciar o claude rc")
+        }
+    }
+
+    /// O `claude rc` do app está rodando com parâmetros diferentes das opções.
+    private var optionsPending: Bool {
+        guard let running = rc.runningArguments else { return false }
+        return running != settings.rcArguments
     }
 
     private var showsLastLine: Bool {
