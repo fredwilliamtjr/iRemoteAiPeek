@@ -16,7 +16,7 @@ import Foundation
 final class RemoteControlService: ObservableObject {
     static let shared = RemoteControlService()
 
-    enum Status: Equatable {
+    enum Status: Equatable, Codable {
         case noFolder
         case stopped
         case starting
@@ -67,6 +67,11 @@ final class RemoteControlService: ObservableObject {
     private let settings = AppSettings.shared
     private let log = RCLog.shared
 
+    /// O modo instalado usa o daemon como autoridade; não há fallback que
+    /// possa duplicar o claude quando o serviço ficar temporariamente indisponível.
+    var usesSystemService: Bool { !ServicePaths.isDaemon && ServicePaths.isInstalled }
+    private var servicePID: pid_t?
+    private var pendingServiceStops: [() -> Void] = []
     private var process: Process?
     private var pty: PseudoTerminal?
     private var readSource: DispatchSourceRead?
@@ -88,7 +93,7 @@ final class RemoteControlService: ObservableObject {
     }
 
     /// PID do `claude rc` iniciado pelo app (o shell faz `exec`, então é o do claude).
-    var ownPID: pid_t? { process?.processIdentifier }
+    var ownPID: pid_t? { usesSystemService ? servicePID : process?.processIdentifier }
 
     /// Sessões conectadas na instância do app.
     var ownSessions: Int {
@@ -103,7 +108,46 @@ final class RemoteControlService: ObservableObject {
 
     // MARK: - Comandos
 
+    func connectAtLaunch() {
+        if usesSystemService { refreshServiceState() } else { start() }
+    }
+
+    private func sendService(_ action: ServiceCommand.Action, folder: URL? = nil, pid: pid_t? = nil) {
+        do {
+            try ServiceBridge.send(action, folder: folder, pid: pid)
+        } catch {
+            status = .failed(error.localizedDescription)
+            lastLine = error.localizedDescription
+        }
+    }
+
+    private func refreshServiceState() {
+        do {
+            let snapshot = try ServiceBridge.snapshot()
+            status = snapshot.status
+            isRunning = snapshot.isRunning
+            servicePID = snapshot.ownPID
+            sessionURL = snapshot.sessionURL
+            lastLine = snapshot.lastLine
+            instances = snapshot.instances
+            runningArguments = snapshot.runningArguments
+            if !isRunning {
+                let waiters = pendingServiceStops
+                pendingServiceStops.removeAll()
+                waiters.forEach { $0() }
+            }
+        } catch {
+            isRunning = false
+            servicePID = nil
+            sessionURL = nil
+            runningArguments = nil
+            status = .failed(error.localizedDescription)
+            lastLine = error.localizedDescription
+        }
+    }
+
     func start() {
+        if usesSystemService { sendService(.start); return }
         restartTask?.cancel()
         restartTask = nil
         guard process == nil else { return }
@@ -138,7 +182,9 @@ final class RemoteControlService: ObservableObject {
         let rcArgs = settings.rcArguments
         // Os parâmetros vêm de opções fixas (RCOptions), sem texto livre — dá
         // para juntar na linha de comando sem escapar.
-        let command = (["exec", "claude", "remote-control"] + rcArgs).joined(separator: " ")
+        let executable = ProcessInfo.processInfo.environment["IREMOTEAIPEEK_CLAUDE_EXECUTABLE"]
+        let claude = executable.map { "'" + $0.replacingOccurrences(of: "'", with: "'\\''") + "'" } ?? "claude"
+        let command = (["exec", claude, "remote-control"] + rcArgs).joined(separator: " ")
 
         do {
             let pty = try PseudoTerminal(columns: 200, rows: 50)
@@ -180,6 +226,11 @@ final class RemoteControlService: ObservableObject {
     /// arquivadas e podem ser retomadas). `completion` roda quando o processo
     /// terminar de fato.
     func stop(completion: (() -> Void)? = nil) {
+        if usesSystemService {
+            if let completion { pendingServiceStops.append(completion) }
+            sendService(.stop)
+            return
+        }
         restartTask?.cancel()
         restartTask = nil
         userStopped = true
@@ -208,11 +259,17 @@ final class RemoteControlService: ObservableObject {
     }
 
     func restart() {
+        if usesSystemService { sendService(.restart); return }
         stop { [weak self] in self?.start() }
     }
 
     /// Troca a pasta; se o `claude rc` estiver rodando, reinicia nela.
     func changeFolder(to url: URL) {
+        if usesSystemService {
+            settings.setFolder(url)
+            sendService(.changeFolder, folder: url)
+            return
+        }
         settings.setFolder(url)
         log.event("pasta alterada para \(url.path)")
         if isRunning {
@@ -224,6 +281,7 @@ final class RemoteControlService: ObservableObject {
 
     /// Responde "sim" à pergunta de confirmação do `claude rc`.
     func confirm() {
+        if usesSystemService { sendService(.confirm); return }
         guard let pty, status == .needsConfirmation else { return }
         log.event("confirmação enviada (y)")
         pty.write("y\r")
@@ -236,6 +294,11 @@ final class RemoteControlService: ObservableObject {
     /// Encerra uma instância externa e passa a rodar o `claude rc` na pasta
     /// dela, pelo app.
     func adopt(_ instance: RCInstance) {
+        if usesSystemService {
+            if let folder = instance.folder { settings.setFolder(folder) }
+            sendService(.adopt, pid: instance.pid)
+            return
+        }
         guard instance.pid != ownPID, let folder = instance.folder else { return }
         log.event("assumindo a instância PID \(instance.pid) em \(folder.path)")
         stop { [weak self] in
@@ -251,6 +314,7 @@ final class RemoteControlService: ObservableObject {
 
     /// Encerra (Ctrl+C) uma instância aberta fora do app.
     func terminateExternal(_ instance: RCInstance) {
+        if usesSystemService { sendService(.terminateExternal, pid: instance.pid); return }
         guard instance.pid != ownPID else { return }
         log.event("encerrando a instância externa PID \(instance.pid)")
         ProcessScanner.interrupt(instance.pid)
@@ -262,7 +326,7 @@ final class RemoteControlService: ObservableObject {
 
     private func startScanning() {
         refreshInstances()
-        let timer = Timer(timeInterval: 5, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: usesSystemService ? 1 : 5, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refreshInstances() }
         }
         // `.common`: continua atualizando com o menu aberto.
@@ -271,6 +335,7 @@ final class RemoteControlService: ObservableObject {
     }
 
     func refreshInstances() {
+        if usesSystemService { refreshServiceState(); return }
         let found = ProcessScanner.findRemoteControlInstances()
         if found != instances { instances = found }
 

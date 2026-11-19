@@ -2,7 +2,7 @@ import Darwin
 import Foundation
 
 /// Uma instância do `claude rc` rodando neste Mac (dentro ou fora do app).
-struct RCInstance: Identifiable, Equatable {
+struct RCInstance: Identifiable, Equatable, Codable {
     let pid: pid_t
     /// Pasta atual do processo — onde o `claude rc` foi iniciado.
     let folder: URL?

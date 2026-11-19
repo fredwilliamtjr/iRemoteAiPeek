@@ -1,20 +1,21 @@
 import AppKit
 
-/// Delegate da aplicação: inicia o claude rc ao abrir e o encerra direito ao
-/// sair (como um Ctrl+C no Terminal, para as sessões ficarem arquivadas).
+/// No modo local, inicia e encerra o Claude com o menu. No modo de serviço,
+/// conecta a interface ao supervisor e deixa o Claude ativo ao fechar o ícone.
 final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Log.app.notice("iRemoteAiPeek iniciado")
         MainActor.assumeIsolated {
             RCLog.shared.event("iRemoteAiPeek \(AppInfo.versionWithBuild) aberto")
-            RemoteControlService.shared.start()
+            RemoteControlService.shared.connectAtLaunch()
         }
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         MainActor.assumeIsolated {
             let rc = RemoteControlService.shared
+            if rc.usesSystemService { return .terminateNow }
             guard rc.isRunning else { return .terminateNow }
 
             var replied = false

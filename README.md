@@ -4,7 +4,7 @@
   <h1>iRemoteAiPeek</h1>
 
   <p><strong>O Remote Control do Claude Code (<code>claude rc</code>) sempre ligado — direto da barra de menus.</strong></p>
-  <p>Escolha a pasta uma vez. Ao abrir o app — ou ao ligar o Mac — ele roda <code>claude remote-control</code> nela, como se você tivesse digitado no Terminal, e o ícone mostra se o serviço está ativo.</p>
+  <p>Escolha a pasta uma vez. No modo padrão, ao abrir o app ele roda <code>claude remote-control</code> nela, como se você tivesse digitado no Terminal, e o ícone mostra se o serviço está ativo.</p>
 
   <p>
     <img src="https://img.shields.io/badge/macOS-13.0%2B-000000?style=flat-square&logo=apple&logoColor=white" alt="macOS 13+">
@@ -81,6 +81,98 @@ A seção **"claude rc rodando neste Mac"** lista cada `claude rc` encontrado, c
 - **Assumir no iRemoteAiPeek** — encerra a instância (Ctrl+C) e sobe o `claude rc` pelo app, já com essa pasta configurada
 - **Encerrar (Ctrl+C)**
 
+## Serviço antes do login (v0.3.0)
+
+O Remote Control pode rodar em um **LaunchDaemon do sistema executado como o
+usuário escolhido**, mesmo na tela de login. Ele nunca roda como root. O
+aplicativo na barra de menus continua funcionando e controla esse mesmo
+supervisor: **Iniciar, Parar, Reiniciar, confirmação, troca de pasta, opções,
+links, logs e gerenciamento de outras instâncias**. Não é uma interface de
+consulta apenas e não inicia um segundo Claude ao fazer login.
+
+No modo de serviço, **Fechar ícone (manter serviço)** encerra somente a interface.
+**Parar** encerra o Claude e preserva essa escolha quando o supervisor reinicia;
+**Iniciar** volta a habilitá-lo. **Mostrar ícone ao iniciar sessão** controla
+somente a abertura da interface depois do login; o daemon tem sua própria
+inicialização no boot. Fora desse modo, o comportamento anterior é preservado.
+
+### Instalação local
+
+Compile e exporte as opções atuais **como o usuário que usa o Claude**:
+
+```bash
+./scripts/build_app.sh
+./dist/iRemoteAiPeek.app/Contents/MacOS/iRemoteAiPeek --write-service-config
+sudo ./scripts/install_system_service.sh "$USER" "$PWD/dist/iRemoteAiPeek.app"
+```
+
+Depois, atualize `/Applications/iRemoteAiPeek.app` com o aplicativo compilado.
+O instalador do supervisor não troca nem encerra o menu que já estiver aberto.
+Ao trocar a interface antiga, encerre-a pelo menu: ela ainda é dona de seu
+Claude. O supervisor acompanha a instância existente e inicia a sua quando
+ela encerrar, evitando duplicação. A migração pode causar uma reconexão breve.
+
+O instalador mantém uma cópia protegida do executável em
+`/Library/Application Support/iRemoteAiPeek/iRemoteAiPeek.app` e registra
+`/Library/LaunchDaemons/com.smartfull.iremoteaipeek.service.<uid>.plist`.
+Uma instalação carregada não é encerrada silenciosamente para atualização.
+
+A comunicação é local, por arquivos JSON atômicos em
+`~/Library/Application Support/iRemoteAiPeek/`: diretório `0700`, arquivos
+`0600`, sem credenciais e sem abrir portas de rede. Os comandos expiram em
+30 segundos e identificam o supervisor destinatário, para que uma instância
+nova não execute comandos antigos. Um lock impede supervisores duplicados.
+
+### Autenticação e limites
+
+O supervisor usa o mesmo `HOME`, pasta e opções do usuário. Antes do primeiro
+login, o Keychain de login pode estar bloqueado. O Claude precisa conseguir
+autenticar nesse contexto. A
+[documentação do Claude](https://code.claude.com/docs/en/authentication#credential-management)
+descreve credenciais em arquivo privado `0600` quando o Keychain não está disponível.
+A presença de um arquivo antigo, sozinha, não comprova autenticação: ele pode
+estar vencido. **Teste de outro aparelho antes de fazer login local**.
+
+Quando for necessário um login próprio do serviço, obtenha aprovação para
+guardar a credencial fora do Keychain. `scripts/prepare_service_profile.py`
+prepara `~/Library/Application Support/iRemoteAiPeek/claude-profile` (`0700`)
+sem copiar credenciais. Ele referencia as configurações, skills, plugins e
+históricos existentes e preserva a confiança na pasta atual. O perfil existente
+nunca é sobrescrito. Faça a autorização **na mesma conta**, em um processo
+executado como usuário no contexto `system`, usando `claude auth login --claudeai`
+com `CLAUDE_CONFIG_DIR` apontando para esse perfil. Não use o login gráfico para
+isso: ele pode guardar o novo login no Keychain em vez do arquivo necessário.
+O instalador detecta o perfil e define `CLAUDE_CONFIG_DIR` no LaunchDaemon.
+A nova credencial fica em `claude-profile/.credentials.json`, gerenciada pelo
+próprio Claude, sem copiar tokens nem alterar o login original.
+
+Não use `claude setup-token` como substituto: tokens somente de inferência
+[não estabelecem Remote Control](https://code.claude.com/docs/en/remote-control).
+Se a autenticação falhar, faça o diagnóstico do login do Claude; não copie
+refresh tokens entre armazenamentos nem remova o Keychain para contornar.
+
+Com FileVault ativo, os serviços só iniciam depois de desbloquear o disco.
+Chrome, Terminal e outras interfaces gráficas dependem da sessão Aqua e não
+ficam disponíveis na tela de login; a opção `--chrome` é preservada para uso
+após entrar no macOS.
+
+### Diagnóstico e testes
+
+```bash
+./dist/iRemoteAiPeek.app/Contents/MacOS/iRemoteAiPeek --service-status
+./dist/iRemoteAiPeek.app/Contents/MacOS/iRemoteAiPeek --service-auth-check
+python3 tests/service_lifecycle.py dist/iRemoteAiPeek.app/Contents/MacOS/iRemoteAiPeek
+python3 tests/service_profile.py
+```
+
+`--service-auth-check` consulta `claude auth status --json` e só emite o
+indicador de autenticação e o código de saída, sem dados da conta ou tokens.
+O teste de integração usa um Claude simulado em pasta descartável, sem
+rede, autenticação, alteração das preferências reais ou encerramento das
+instâncias de Claude do usuário. Ele valida PTY, confirmação, opções, pasta,
+reinício automático, estado de parada persistente, encerramento do supervisor,
+permissões, comandos obsoletos e recusa de diretórios IPC por link simbólico.
+
 ## 🧱 Arquitetura
 
 ```
@@ -99,7 +191,8 @@ iRemoteAiPeek/
 | `TerminalText` | Remove escapes ANSI, acha o link `https://claude.ai/code…` e detecta pedidos de confirmação |
 | `ProcessScanner` | Acha os `claude rc` do usuário (`proc_listallpids` + `KERN_PROCARGS2`), a pasta de cada um (`proc_pidinfo`) e as sessões (filhos com `--sdk-url`) |
 | `RCLog` | Log em arquivo com deduplicação de linhas e rotação em 5 MB |
-| `AppSettings` | Pasta escolhida (UserDefaults) |
+| `AppSettings` | Pasta e opções (UserDefaults e configuração privada compartilhada com o daemon) |
+| `SystemService` / `ServiceBridge` | Supervisor sem interface no boot; status e comandos locais do menu |
 | `LaunchAtLogin` | Iniciar com o macOS via `SMAppService.mainApp` |
 | `TerminalLauncher` | Abre o Terminal com `claude rc` na pasta, para a confirmação manual |
 

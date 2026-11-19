@@ -14,6 +14,7 @@ struct MenuBarContent: View {
         Divider()
 
         Text("Status: \(statusText)")
+        if rc.usesSystemService { Text("Serviço do sistema · independente do login") }
         Text("Pasta: \(settings.folderDisplay)")
         if showsLastLine, let line = rc.lastLine {
             Text(line.count > 80 ? String(line.prefix(80)) + "…" : line)
@@ -66,9 +67,9 @@ struct MenuBarContent: View {
 
         Divider()
 
-        Toggle("Iniciar com o macOS", isOn: $launchAtLogin.isEnabled)
+        Toggle(rc.usesSystemService ? "Mostrar ícone ao iniciar sessão" : "Iniciar com o macOS", isOn: $launchAtLogin.isEnabled)
 
-        Button("Sair do iRemoteAiPeek") { NSApplication.shared.terminate(nil) }
+        Button(rc.usesSystemService ? "Fechar ícone (manter serviço)" : "Sair do iRemoteAiPeek") { NSApplication.shared.terminate(nil) }
             .keyboardShortcut("q")
     }
 

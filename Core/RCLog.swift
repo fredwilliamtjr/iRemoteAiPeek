@@ -21,8 +21,13 @@ final class RCLog {
     }()
 
     private init() {
-        let dir = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Logs/iRemoteAiPeek", isDirectory: true)
+        let dir: URL
+        if ProcessInfo.processInfo.environment["IREMOTEAIPEEK_SERVICE_DIR"] != nil {
+            dir = ServicePaths.root.appendingPathComponent("logs", isDirectory: true)
+        } else {
+            dir = FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent("Library/Logs/iRemoteAiPeek", isDirectory: true)
+        }
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         fileURL = dir.appendingPathComponent("claude-rc.log")
     }

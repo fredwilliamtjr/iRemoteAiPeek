@@ -1,6 +1,5 @@
 import SwiftUI
 
-@main
 struct iRemoteAiPeekApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @ObservedObject private var rc = RemoteControlService.shared
